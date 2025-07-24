@@ -268,8 +268,8 @@ def handle_mention(event, say):
         del user_states[user_id]
 
 # Reemplaza con tus tokens
-os.environ["SLACK_BOT_TOKEN"] = "xoxb-5773953030370-9250134274837-6bgIafLXuW7a89JxCbAyVU3x"
-os.environ["SLACK_APP_TOKEN"] = "xapp-1-A097SKHCP1P-9249029851638-75ad79f1a235917e7e3cd929341d0fc1108985ba2dcbc42f7aa1e68a9bfd3a99"
+SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
+SLACK_APP_TOKEN = os.environ.get("SLACK_APP_TOKEN")
 
 if __name__ == "__main__":
     handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
