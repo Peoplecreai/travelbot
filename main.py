@@ -1,5 +1,6 @@
 import os
 import flask
+import json
 from slack_bolt import App
 from slack_bolt.adapter.flask import SlackRequestHandler
 from google.cloud import firestore
@@ -25,11 +26,13 @@ def slack_events():
     if flask.request.method == "POST":
         data = flask.request.get_json(silent=True)
         if data and data.get("type") == "url_verification":
+            # Challenge para Slack
             return flask.jsonify({"challenge": data["challenge"]})
         return handler.handle(flask.request)
     else:
         return "OK", 200
 
+# Eventos Slack (esto NO es Flask, es Slack Bolt)
 @app.event("message")
 def handle_message_events(event, say, client):
     if event.get("channel_type") != "im":
@@ -86,4 +89,3 @@ def handle_app_home_opened(event, client, context):
 
 if __name__ == "__main__":
     flask_app.run(host="0.0.0.0", port=8080)
-
