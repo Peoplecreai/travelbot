@@ -1,5 +1,6 @@
 import os
 import json
+import functions_framework
 from slack_bolt import App
 from slack_bolt.adapter.google_cloud_functions import SlackRequestHandler
 from google.cloud import firestore
@@ -12,21 +13,25 @@ from handlers.actions import register_actions
 from handlers.summary import handle_summary
 from utils.timeouts import reset_state_if_timeout
 
+# Configuración de la app de Slack
 app = App(token=SLACK_BOT_TOKEN, signing_secret=SLACK_SIGNING_SECRET)
 register_actions(app)
 handler = SlackRequestHandler(app)
 
+# --- Punto de entrada para Google Cloud Functions ---
 @functions_framework.http
 def slack_request(request):
-    # Para el challenge de Slack (verificación inicial)
-    if request.method == 'POST':
+    # Challenge de Slack para verificar endpoint
+    if request.method == "POST":
         data = request.get_json(silent=True)
         if data and data.get("type") == "url_verification":
-            return {"challenge": data["challenge"]}
-    if request.method in ['GET', 'HEAD']:
-        return "OK", 200
+            return (json.dumps({"challenge": data["challenge"]}), 200, {"Content-Type": "application/json"})
+    if request.method in ["GET", "HEAD"]:
+        return ("OK", 200)
+    # Slack events handler
     return handler.handle(request)
 
+# --- Eventos de Slack ---
 @app.event("message")
 def handle_message_events(event, say, client):
     if event.get("channel_type") != "im":
@@ -34,14 +39,14 @@ def handle_message_events(event, say, client):
     if event.get("subtype") == "bot_message":
         return
 
-    user_id = event['user']
-    text = event.get('text', '').strip().lower()
-    doc_ref = db.collection('conversations').document(user_id)
-    state = doc_ref.get().to_dict() or {'data': {}, 'step': 0, 'level': None, 'flight_options': [], 'hotel_options': []}
+    user_id = event["user"]
+    text = event.get("text", "").strip().lower()
+    doc_ref = db.collection("conversations").document(user_id)
+    state = doc_ref.get().to_dict() or {"data": {}, "step": 0, "level": None, "flight_options": [], "hotel_options": []}
 
     # TIMEOUT: Si han pasado más de 30 min, reinicia estado
     state = reset_state_if_timeout(state)
-    
+
     # 1. Bienvenida
     if handle_welcome(text, say, state, doc_ref):
         return
