@@ -26,7 +26,8 @@ def slack_events():
     data = flask.request.get_json(silent=True)
     if data and data.get("type") == "url_verification":
         return flask.jsonify({"challenge": data["challenge"]})
-    return handler.handle(flask.request)
+    # Otras rutas aquí
+    return "OK", 200
 
 # Eventos Slack (esto NO es Flask, es Slack Bolt)
 @app.event("message")
