@@ -1,105 +1,76 @@
-import re
-import dateparser
-import dateparser.search
-import datetime
+# extract.py
 
-def extract_trip_data(text, datos_actuales=None):
-    datos = datos_actuales.copy() if datos_actuales else {}
+import google.generativeai as genai
+import os
+import json
 
-    fechas = dateparser.search.search_dates(text, languages=['es'])
-    if fechas and len(fechas) >= 2:
-        datos['start_date'] = fechas[0][1].date().isoformat()
-        datos['return_date'] = fechas[1][1].date().isoformat()
-    elif fechas and len(fechas) == 1:
-        datos['start_date'] = fechas[0][1].date().isoformat()
+REQUIRED_FIELDS = [
+    "origin",
+    "destination",
+    "start_date",
+    "return_date",
+    "motive",
+    "venue"
+]
 
-    # Origen solo si no existe y patrón parece correcto
-    if not datos.get('origin'):
-        origen = re.search(r'(?:desde|de)\s+([A-Za-záéíóúüñ\s]+)', text, re.IGNORECASE)
-        if origen:
-            # Valida que no esté detectando mal palabras como 'de agosto'
-            origen_candidato = origen.group(1).strip()
-            # No permitas que meses o palabras sueltas sean origen
-            if origen_candidato.lower() not in [
-                "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
-                "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-            ] and len(origen_candidato) > 2:
-                datos['origin'] = origen_candidato
+USER_PROMPT = """
+Eres un asistente especializado en reservas de viajes de negocio, amigable y profesional. Tu objetivo es guiar la conversación de manera natural y fluida para recopilar información del usuario sin ser invasivo.
 
-    # Destino solo si no existe
-    if not datos.get('destination'):
-        destino = re.search(r'a\s+([A-Za-záéíóúüñ\s]+)', text, re.IGNORECASE)
-        if destino:
-            destino_candidato = destino.group(1).strip()
-            # Lo mismo: no permitas palabras ambiguas como "agosto"
-            if destino_candidato.lower() not in [
-                "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
-                "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-            ] and len(destino_candidato) > 2:
-                datos['destination'] = destino_candidato
+Tu tarea principal es extraer los siguientes datos esenciales, preguntando solo lo necesario y de forma conversacional:
 
-    if not datos.get('motive'):
-        motivo = re.search(r'(reunión|evento|conferencia|capacitaci[oó]n|visita|clientes?)', text, re.IGNORECASE)
-        if motivo:
-            datos['motive'] = motivo.group(0).capitalize()
-    if not datos.get('venue'):
-        venue = re.search(r'(oficinas? de [A-Za-z0-9\s]+)', text, re.IGNORECASE)
-        if venue:
-            datos['venue'] = venue.group(0)
-    return datos
+Origen: Ciudad de salida (por ejemplo, "Madrid" o "Nueva York").
+Destino: Ciudad o lugar de llegada.
+Fecha de salida: Parsea cualquier formato de fecha que proporcione el usuario (ejemplos: "25 de julio", "julio 25", "7/25", "mañana", etc.). Asume el año actual (2025) si no se especifica. Convierte internamente a formato YYYY-MM-DD para el JSON.
+Fecha de regreso: Similar al anterior; si es un viaje de ida solo o no aplica, usa "null".
+Motivo del viaje: Breve descripción (por ejemplo, "reunión con clientes" o "conferencia anual").
+Venue: Nombre del evento, conferencia o lugar específico (si aplica; si no hay, usa "null").
+Reglas estrictas:
 
-def handle_extract_data(text, say, state, doc_ref, user_id):
-    datos = extract_trip_data(text, datos_actuales=state.get('data', {}))
-    state['data'] = datos
-    labels = {
-        'destination': "Destino (ciudad y país)",
-        'origin': "Origen (ciudad y país)",
-        'start_date': "Fecha de salida",
-        'return_date': "Fecha de regreso",
-        'motive': "Motivo del viaje",
-        'venue': "Nombre del evento o lugar (venue)"
-    }
-    fields_needed = [k for k in labels if not datos.get(k)]
-    if fields_needed:
-        # Prioridad: si falta origen, pregúntalo específicamente.
-        if 'origin' in fields_needed:
-            say("¿De dónde sales? Indica ciudad y país de origen.")
-            state['last_ts'] = datetime.datetime.utcnow().timestamp()
-            doc_ref.set(state)
-            return None
-        # Si falta destino
-        if 'destination' in fields_needed:
-            say("¿A dónde viajas? Indica ciudad y país de destino.")
-            state['last_ts'] = datetime.datetime.utcnow().timestamp()
-            doc_ref.set(state)
-            return None
-        # Si falta motivo
-        if 'motive' in fields_needed:
-            say("¿Cuál es el motivo de tu viaje? Por ejemplo: reunión, evento, capacitación, visita, etc.")
-            state['last_ts'] = datetime.datetime.utcnow().timestamp()
-            doc_ref.set(state)
-            return None
-        # Si falta venue
-        if 'venue' in fields_needed:
-            say("¿Dónde se llevará a cabo el evento o visita? Dame el nombre del lugar o evento.")
-            state['last_ts'] = datetime.datetime.utcnow().timestamp()
-            doc_ref.set(state)
-            return None
-        # Si falta fecha
-        if 'start_date' in fields_needed or 'return_date' in fields_needed:
-            say("¿Cuáles son las fechas de salida y regreso? Puedes ponerlas así: del 10 al 15 de agosto.")
-            state['last_ts'] = datetime.datetime.utcnow().timestamp()
-            doc_ref.set(state)
-            return None
-        # Mensaje general si no se detectó ningún campo específico
-        resumen = [f"{labels[k]}: {datos[k]}" for k in labels if datos.get(k)]
-        msg = ""
-        if resumen:
-            msg += "Ya tengo:\n" + "\n".join(f"- {r}" for r in resumen) + "\n"
-        if fields_needed:
-            msg += "Por favor indícame:\n" + "\n".join(f"• {labels[k]}" for k in fields_needed)
-        say(msg)
-        state['last_ts'] = datetime.datetime.utcnow().timestamp()
-        doc_ref.set(state)
-        return None
-    return datos
+NO preguntes ni asumas el nivel jerárquico del usuario, su rol en la empresa ni información personal innecesaria.
+Si falta algún dato, pregunta SOLO por ese dato específico con una pregunta corta y natural (ejemplo: "¿Cuál es la ciudad de origen?").
+Si detectas ambigüedad (como fechas vagas, destinos múltiples o formatos no estándar), pregunta para aclarar de inmediato sin asumir (ejemplo: "¿Te refieres a París en Francia o París en Texas?" o "¿La fecha de salida es el 25 de julio de este año?").
+Parsea fechas de manera flexible y humana: interpreta expresiones como "el próximo lunes", "en dos semanas" o formatos informales basándote en la fecha actual (25 de julio de 2025). Si es ambiguo, aclara.
+Mantén la conversación corta y enfocada; no agregues chit-chat innecesario a menos que el usuario lo inicie.
+Si el usuario proporciona datos extra o corrige información, actualiza internamente y confirma sutilmente.
+Una vez que tengas TODOS los datos completos y sin ambigüedades, termina la conversación respondiendo SOLO con un JSON válido en este formato exacto (sin explicaciones, sin texto adicional):
+{
+"origin": "...",
+"destination": "...",
+"start_date": "...",
+"return_date": "...",
+"motive": "...",
+"venue": "..."
+}
+
+Si el JSON no está completo, continúa preguntando. Asegúrate de que las fechas en el JSON estén en formato DD/MM/YYYY y que el JSON sea parseable.
+
+A continuación, la conversación previa:
+
+"""
+
+def make_prompt(history):
+    prompt = USER_PROMPT
+    for turn in history:
+        who = "Usuario" if turn["role"] == "user" else "Bot"
+        prompt += f"{who}: {turn['parts'][0]}\n"
+    prompt += "\nResponde según las instrucciones."
+    return prompt
+
+def extract_trip_data(history):
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    prompt = make_prompt(history)
+    response = model.generate_content(prompt)
+    output = response.text.strip()
+
+    try:
+        data = json.loads(output)
+        # Valida que todas las claves estén y tengan valor (puede ser null para return_date y venue)
+        if all(k in data for k in REQUIRED_FIELDS) and all(
+            data[k] not in [None, "null", ""] or k in ["return_date", "venue"] for k in REQUIRED_FIELDS
+        ):
+            # Además, valida formato de fechas DD/MM/YYYY si quieres, aquí puedes meter regex si lo requieres
+            return data, None
+    except Exception:
+        pass
+
+    return None, output
