@@ -4,9 +4,8 @@ import dateparser.search
 import datetime
 
 def extract_trip_data(text, datos_actuales=None):
-    datos = datos_actuales or {}
+    datos = datos_actuales.copy() if datos_actuales else {}
 
-    # Fechas
     fechas = dateparser.search.search_dates(text, languages=['es'])
     if fechas and len(fechas) >= 2:
         datos['start_date'] = fechas[0][1].date().isoformat()
@@ -14,87 +13,93 @@ def extract_trip_data(text, datos_actuales=None):
     elif fechas and len(fechas) == 1:
         datos['start_date'] = fechas[0][1].date().isoformat()
 
-    # Origen
-    if 'origin' not in datos or not datos['origin']:
-        origen = re.search(r'(desde|de)\s+([A-Za-záéíóúüñ\s]+)', text, re.IGNORECASE)
+    # Origen solo si no existe y patrón parece correcto
+    if not datos.get('origin'):
+        origen = re.search(r'(?:desde|de)\s+([A-Za-záéíóúüñ\s]+)', text, re.IGNORECASE)
         if origen:
-            posibles = origen.group(2).strip()
-            # Evita que tome palabras ambiguas como "agosto" como ciudad
-            if posibles.lower() in ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']:
-                datos['origin'] = None  # Ignora meses como origen
-            else:
-                datos['origin'] = posibles
+            # Valida que no esté detectando mal palabras como 'de agosto'
+            origen_candidato = origen.group(1).strip()
+            # No permitas que meses o palabras sueltas sean origen
+            if origen_candidato.lower() not in [
+                "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+            ] and len(origen_candidato) > 2:
+                datos['origin'] = origen_candidato
 
-    # Destino
-    if 'destination' not in datos or not datos['destination']:
+    # Destino solo si no existe
+    if not datos.get('destination'):
         destino = re.search(r'a\s+([A-Za-záéíóúüñ\s]+)', text, re.IGNORECASE)
         if destino:
-            posibles = destino.group(1).strip()
-            # Evita que tome meses como destino
-            if posibles.lower() in ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']:
-                datos['destination'] = None  # Ignora meses como destino
-            else:
-                datos['destination'] = posibles
+            destino_candidato = destino.group(1).strip()
+            # Lo mismo: no permitas palabras ambiguas como "agosto"
+            if destino_candidato.lower() not in [
+                "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
+                "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+            ] and len(destino_candidato) > 2:
+                datos['destination'] = destino_candidato
 
-    # Motivo
-    if 'motive' not in datos or not datos['motive']:
+    if not datos.get('motive'):
         motivo = re.search(r'(reunión|evento|conferencia|capacitaci[oó]n|visita|clientes?)', text, re.IGNORECASE)
         if motivo:
             datos['motive'] = motivo.group(0).capitalize()
-
-    # Venue
-    if 'venue' not in datos or not datos['venue']:
+    if not datos.get('venue'):
         venue = re.search(r'(oficinas? de [A-Za-z0-9\s]+)', text, re.IGNORECASE)
         if venue:
             datos['venue'] = venue.group(0)
-
     return datos
 
 def handle_extract_data(text, say, state, doc_ref, user_id):
     datos = extract_trip_data(text, datos_actuales=state.get('data', {}))
     state['data'] = datos
-
-    # Origen
-    if not datos.get('origin'):
-        say("¿De dónde sales? Indícame la ciudad y país de origen de tu vuelo.")
+    labels = {
+        'destination': "Destino (ciudad y país)",
+        'origin': "Origen (ciudad y país)",
+        'start_date': "Fecha de salida",
+        'return_date': "Fecha de regreso",
+        'motive': "Motivo del viaje",
+        'venue': "Nombre del evento o lugar (venue)"
+    }
+    fields_needed = [k for k in labels if not datos.get(k)]
+    if fields_needed:
+        # Prioridad: si falta origen, pregúntalo específicamente.
+        if 'origin' in fields_needed:
+            say("¿De dónde sales? Indica ciudad y país de origen.")
+            state['last_ts'] = datetime.datetime.utcnow().timestamp()
+            doc_ref.set(state)
+            return None
+        # Si falta destino
+        if 'destination' in fields_needed:
+            say("¿A dónde viajas? Indica ciudad y país de destino.")
+            state['last_ts'] = datetime.datetime.utcnow().timestamp()
+            doc_ref.set(state)
+            return None
+        # Si falta motivo
+        if 'motive' in fields_needed:
+            say("¿Cuál es el motivo de tu viaje? Por ejemplo: reunión, evento, capacitación, visita, etc.")
+            state['last_ts'] = datetime.datetime.utcnow().timestamp()
+            doc_ref.set(state)
+            return None
+        # Si falta venue
+        if 'venue' in fields_needed:
+            say("¿Dónde se llevará a cabo el evento o visita? Dame el nombre del lugar o evento.")
+            state['last_ts'] = datetime.datetime.utcnow().timestamp()
+            doc_ref.set(state)
+            return None
+        # Si falta fecha
+        if 'start_date' in fields_needed or 'return_date' in fields_needed:
+            say("¿Cuáles son las fechas de salida y regreso? Puedes ponerlas así: del 10 al 15 de agosto.")
+            state['last_ts'] = datetime.datetime.utcnow().timestamp()
+            doc_ref.set(state)
+            return None
+        # Mensaje general si no se detectó ningún campo específico
+        resumen = [f"{labels[k]}: {datos[k]}" for k in labels if datos.get(k)]
+        msg = ""
+        if resumen:
+            msg += "Ya tengo:\n" + "\n".join(f"- {r}" for r in resumen) + "\n"
+        if fields_needed:
+            msg += "Por favor indícame:\n" + "\n".join(f"• {labels[k]}" for k in fields_needed)
+        say(msg)
         state['last_ts'] = datetime.datetime.utcnow().timestamp()
         doc_ref.set(state)
         return None
-
-    # Destino
-    if not datos.get('destination'):
-        say("¿A qué ciudad viajas? Indícame destino con ciudad y país.")
-        state['last_ts'] = datetime.datetime.utcnow().timestamp()
-        doc_ref.set(state)
-        return None
-
-    # Fecha de salida
-    if not datos.get('start_date'):
-        say("¿Qué día sales de viaje? Dame la fecha de salida.")
-        state['last_ts'] = datetime.datetime.utcnow().timestamp()
-        doc_ref.set(state)
-        return None
-
-    # Fecha de regreso
-    if not datos.get('return_date'):
-        say("¿Cuándo regresas? Dame la fecha de regreso.")
-        state['last_ts'] = datetime.datetime.utcnow().timestamp()
-        doc_ref.set(state)
-        return None
-
-    # Motivo
-    if not datos.get('motive'):
-        say("¿Cuál es el motivo de tu viaje? Por ejemplo: reunión, evento, capacitación, visita, etc.")
-        state['last_ts'] = datetime.datetime.utcnow().timestamp()
-        doc_ref.set(state)
-        return None
-
-    # Venue
-    if not datos.get('venue'):
-        say("¿Dónde se llevará a cabo el evento o visita? Dame el nombre del lugar o evento.")
-        state['last_ts'] = datetime.datetime.utcnow().timestamp()
-        doc_ref.set(state)
-        return None
-
-    # Si llegó aquí, ya tiene todo
     return datos
