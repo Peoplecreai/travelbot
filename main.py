@@ -21,16 +21,12 @@ handler = SlackRequestHandler(app)
 # Flask app for Cloud Run
 flask_app = flask.Flask(__name__)
 
-@flask_app.route("/slack/events", methods=["POST", "GET", "HEAD"])
+@flask_app.route("/slack/events", methods=["POST"])
 def slack_events():
-    if flask.request.method == "POST":
-        data = flask.request.get_json(silent=True)
-        if data and data.get("type") == "url_verification":
-            # Challenge para Slack
-            return flask.jsonify({"challenge": data["challenge"]})
-        return handler.handle(flask.request)
-    else:
-        return "OK", 200
+    data = flask.request.get_json(silent=True)
+    if data and data.get("type") == "url_verification":
+        return flask.jsonify({"challenge": data["challenge"]})
+    return handler.handle(flask.request)
 
 # Eventos Slack (esto NO es Flask, es Slack Bolt)
 @app.event("message")
