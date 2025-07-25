@@ -1,0 +1,5 @@
+echo "functions-framework==3.*" > requirements.txt
+echo "slack-bolt==1.18.*" >> requirements.txt
+echo "requests==2.*" >> requirements.txt
+echo "gspread==5.*" >> requirements.txt
+echo "oauth2client==4.*" >> requirements.txt
