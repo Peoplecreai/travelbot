@@ -2,8 +2,12 @@ import os
 import google.generativeai as genai
 import json
 
-# PROMPT PARA GEMINI
-AI_PROMPT = """
+# Configura Gemini con tu API KEY (debe estar como variable de entorno o puedes setear aquí directamente)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_API_KEY)
+
+# Prompt persistente (pon tu prompt aquí)
+GEMINI_PROMPT = """
 Eres un asistente especializado en reservas de viajes de negocio, amigable y profesional. Tu objetivo es guiar la conversación de manera natural y fluida para recopilar información del usuario sin ser invasivo.
 
 Tu tarea principal es extraer los siguientes datos esenciales, preguntando solo lo necesario y de forma conversacional:
@@ -14,8 +18,8 @@ Fecha de salida: Parsea cualquier formato de fecha que proporcione el usuario (e
 Fecha de regreso: Similar al anterior; si es un viaje de ida solo o no aplica, usa "null".
 Motivo del viaje: Breve descripción (por ejemplo, "reunión con clientes" o "conferencia anual").
 Venue: Nombre del evento, conferencia o lugar específico (si aplica; si no hay, usa "null").
-Reglas estrictas:
 
+Reglas estrictas:
 NO preguntes ni asumas el nivel jerárquico del usuario, su rol en la empresa ni información personal innecesaria.
 Si falta algún dato, pregunta SOLO por ese dato específico con una pregunta corta y natural (ejemplo: "¿Cuál es la ciudad de origen?").
 Si detectas ambigüedad (como fechas vagas, destinos múltiples o formatos no estándar), pregunta para aclarar de inmediato sin asumir (ejemplo: "¿Te refieres a París en Francia o París en Texas?" o "¿La fecha de salida es el 25 de julio de este año?").
@@ -35,73 +39,48 @@ Una vez que tengas TODOS los datos completos y sin ambigüedades, termina la con
 Si el JSON no está completo, continúa preguntando. Asegúrate de que las fechas en el JSON estén en formato DD/MM/YYYY y que el JSON sea parseable.
 
 A continuación, la conversación previa:
-
 """
 
-# Inicializa Gemini solo una vez
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
-
-REQUIRED_FIELDS = ["origin", "destination", "start_date", "return_date", "motive", "venue"]
-
-def extract_trip_data(conversation_history):
-    """
-    Llama a Gemini para extraer datos del viaje a partir de la conversación.
-    Args:
-        conversation_history (str): Conversación previa con el usuario.
-    Returns:
-        dict: Con los campos origin, destination, start_date, return_date, motive, venue.
-    """
-    prompt = AI_PROMPT + conversation_history
-    response = model.generate_content(prompt)
-    # Intenta extraer JSON de la respuesta
-    try:
-        json_start = response.text.find("{")
-        json_end = response.text.rfind("}") + 1
-        output = json.loads(response.text[json_start:json_end])
-        return output
-    except Exception:
-        return None
-
 def handle_extract_data(text, say, state, doc_ref, user_id):
-    """
-    Función que maneja la extracción y conversación para obtener datos del viaje.
-    """
-    conversation = state.get("conversation", "")
-    conversation += f"Usuario: {text}\n"
-    datos = extract_trip_data(conversation)
+    # Historial de conversación
+    history = state.get("history", [])
+    history.append({"role": "user", "content": text})
 
-    # Si Gemini regresa JSON válido y completo, avanza
-    if datos and all(k in datos and datos[k] not in [None, "null", ""] for k in REQUIRED_FIELDS):
+    # Arma el contexto para Gemini
+    conversation = ""
+    for h in history:
+        if h["role"] == "user":
+            conversation += f"Usuario: {h['content']}\n"
+        else:
+            conversation += f"Asistente: {h['content']}\n"
+
+    prompt = GEMINI_PROMPT + conversation
+
+    # Llama a Gemini
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(prompt)
+    reply = response.text.strip()
+
+    # Intenta parsear JSON
+    json_start = reply.find("{")
+    json_end = reply.rfind("}") + 1
+    datos = None
+    if json_start != -1 and json_end != -1:
+        try:
+            posible_json = reply[json_start:json_end]
+            datos = json.loads(posible_json)
+        except Exception:
+            datos = None
+
+    # Si el JSON está completo y válido, termina y regresa datos
+    if datos and all(k in datos and datos[k] for k in ["origin", "destination", "start_date", "motive"]):
         state["data"] = datos
-        state["conversation"] = ""  # Limpia historial porque ya terminó
+        state["history"] = history
         doc_ref.set(state)
         return datos
 
-    # Si no, sigue preguntando
-    else:
-        state["conversation"] = conversation
-        doc_ref.set(state)
-        # Si Gemini preguntó algo (no regresó JSON), mándalo al usuario
-        # Asumimos que si no hay JSON, la respuesta de Gemini es una pregunta
-        if datos is None:
-            # Muestra la respuesta de Gemini tal cual (pregunta conversacional)
-            respuesta = model.generate_content(AI_PROMPT + conversation).text
-            say(respuesta.strip())
-        else:
-            # Pregunta por campos faltantes (fallback)
-            faltantes = [k for k in REQUIRED_FIELDS if not datos.get(k)]
-            if faltantes:
-                preguntas = {
-                    "origin": "¿De qué ciudad sales?",
-                    "destination": "¿A qué ciudad viajas?",
-                    "start_date": "¿Cuál es la fecha de salida?",
-                    "return_date": "¿Y la de regreso? Si solo es ida, dime 'solo ida'.",
-                    "motive": "¿Cuál es el motivo del viaje? (reunión, evento, capacitación, etc.)",
-                    "venue": "¿Dónde se llevará a cabo el evento o visita? Dame el nombre del lugar o evento."
-                }
-                for k in faltantes:
-                    say(preguntas[k])
-                    break
-        return None
+    # Si Gemini responde texto (pregunta), mándalo y sigue esperando respuesta
+    say(reply)
+    state["history"] = history
+    doc_ref.set(state)
+    return None
