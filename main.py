@@ -3,7 +3,6 @@ import json
 import functions_framework
 from slack_bolt import App
 from slack_bolt.adapter.google_cloud_functions import SlackRequestHandler
-from google.cloud import firestore
 
 from config import SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, db
 from handlers.welcome import handle_welcome
@@ -13,25 +12,20 @@ from handlers.actions import register_actions
 from handlers.summary import handle_summary
 from utils.timeouts import reset_state_if_timeout
 
-# Configuración de la app de Slack
 app = App(token=SLACK_BOT_TOKEN, signing_secret=SLACK_SIGNING_SECRET)
 register_actions(app)
 handler = SlackRequestHandler(app)
 
-# --- Punto de entrada para Google Cloud Functions ---
 @functions_framework.http
 def slack_request(request):
-    # Challenge de Slack para verificar endpoint
     if request.method == "POST":
         data = request.get_json(silent=True)
         if data and data.get("type") == "url_verification":
             return (json.dumps({"challenge": data["challenge"]}), 200, {"Content-Type": "application/json"})
     if request.method in ["GET", "HEAD"]:
         return ("OK", 200)
-    # Slack events handler
     return handler.handle(request)
 
-# --- Eventos de Slack ---
 @app.event("message")
 def handle_message_events(event, say, client):
     if event.get("channel_type") != "im":
@@ -42,9 +36,11 @@ def handle_message_events(event, say, client):
     user_id = event["user"]
     text = event.get("text", "").strip()
     doc_ref = db.collection("conversations").document(user_id)
-    state = doc_ref.get().to_dict() or {"data": {}, "step": 0, "level": None, "flight_options": [], "hotel_options": []}
+    state = doc_ref.get().to_dict() or {
+        "data": {}, "step": 0, "level": None, "flight_options": [], "hotel_options": []
+    }
 
-    # TIMEOUT: Si han pasado más de 30 min, reinicia estado
+    # Timeout: Si han pasado más de 30 min, reinicia estado
     state = reset_state_if_timeout(state)
 
     # 1. Bienvenida
@@ -62,26 +58,3 @@ def handle_message_events(event, say, client):
 
     # 4. Resumen final, enviar a Finanzas
     handle_summary(datos, state, user_id, say, doc_ref, client)
-
-@app.event("app_home_opened")
-def handle_app_home_opened(event, client, context):
-    user_id = event["user"]
-    client.views_publish(
-        user_id=user_id,
-        view={
-            "type": "home",
-            "blocks": [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            "*¡Bienvenido a TravelBot!* :airplane:\n"
-                            "Aquí puedes gestionar tus solicitudes de viajes de negocio según la política de la empresa.\n"
-                            "Para empezar, escríbeme por este chat los detalles de tu próximo viaje o consulta los recursos en la barra lateral."
-                        ),
-                    },
-                }
-            ],
-        },
-    )
