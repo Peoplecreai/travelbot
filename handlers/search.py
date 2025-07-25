@@ -1,4 +1,4 @@
-# search.py
+# handlers/search.py
 
 import requests
 from config import LODGING_LIMITS, get_region, SERPAPI_KEY
@@ -69,13 +69,22 @@ def find_better_area(area):
     return area
 
 def get_flight_options(datos):
-    # Regresa lista de vuelos (ya sea vacía o con opciones)
+    """
+    Regresa lista de vuelos disponibles (o vacía si no hay)
+    """
     flights = search_google_flights(
-        datos['origin'], datos['destination'], datos['start_date'], datos['return_date']
+        datos['origin'],
+        datos['destination'],
+        datos['start_date'],
+        datos['return_date']
     )
     return flights
 
 def get_hotel_options(datos, state, max_lodging_override=None):
+    """
+    Regresa lista de hoteles (máx 3), área y si la zona es segura.
+    Aplica política de límite por seniority (state['level']) y región.
+    """
     region = get_region(datos['destination'])
     max_lodging = max_lodging_override or LODGING_LIMITS[state['level']][region]
     area = datos.get('venue') or datos['destination']
@@ -84,10 +93,9 @@ def get_hotel_options(datos, state, max_lodging_override=None):
     is_safe, info = check_safety(area)
     if not is_safe:
         better_area = find_better_area(area)
-        area = better_area  # Buscar en la mejor zona alternativa
+        area = better_area
 
     hotels = search_hotels(area, max_lodging)
     return hotels, area, is_safe
 
-# El archivo solo busca y entrega resultados a actions.py,
-# NO manda mensajes ni botones aquí, eso se hace en actions.py
+# Solo funciones de búsqueda, NO slack, NO botones, NO UI
