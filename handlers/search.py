@@ -1,6 +1,40 @@
+# search.py
+
 import requests
 from config import LODGING_LIMITS, get_region, SERPAPI_KEY
-from handlers.actions import post_flight_buttons, post_hotel_buttons
+
+def search_google_flights(origin, destination, start_date, return_date):
+    url = "https://serpapi.com/search.json"
+    params = {
+        "engine": "google_flights",
+        "departure_id": origin,
+        "arrival_id": destination,
+        "outbound_date": start_date,
+        "return_date": return_date,
+        "api_key": SERPAPI_KEY
+    }
+    resp = requests.get(url, params=params)
+    if resp.status_code == 200:
+        data = resp.json()
+        if 'best_flights' in data and data['best_flights']:
+            return data['best_flights'][0]['flights']
+    return []
+
+def search_hotels(location, max_price):
+    url = "https://serpapi.com/search.json"
+    params = {
+        "engine": "google_hotels",
+        "q": f"hoteles en {location}",
+        "currency": "USD",
+        "api_key": SERPAPI_KEY,
+        "max_price_per_night": max_price
+    }
+    resp = requests.get(url, params=params)
+    if resp.status_code == 200:
+        data = resp.json()
+        if 'properties' in data:
+            return data['properties'][:3]
+    return []
 
 def check_safety(area):
     url = "https://serpapi.com/search.json"
@@ -34,33 +68,26 @@ def find_better_area(area):
             return data['organic_results'][0].get('title', area)
     return area
 
-def handle_search_and_buttons(datos, state, event, client, say, doc_ref, max_lodging_override=None):
-    # Paso 1: Vuelos
-    if not state.get('flight_selected'):
-        flights = post_flight_buttons(datos, state, event, client, doc_ref)
-        if flights:
-            return True
-        else:
-            say("No encontré vuelos disponibles para esas fechas y rutas. Intenta con otros datos.")
-            return True
+def get_flight_options(datos):
+    # Regresa lista de vuelos (ya sea vacía o con opciones)
+    flights = search_google_flights(
+        datos['origin'], datos['destination'], datos['start_date'], datos['return_date']
+    )
+    return flights
 
-    # Paso 2: Hoteles
-    if not state.get('hotel_selected'):
-        region = get_region(datos['destination'])
-        max_lodging = max_lodging_override or LODGING_LIMITS[state['level']][region]
-        area = datos.get('venue') or datos['destination']
+def get_hotel_options(datos, state, max_lodging_override=None):
+    region = get_region(datos['destination'])
+    max_lodging = max_lodging_override or LODGING_LIMITS[state['level']][region]
+    area = datos.get('venue') or datos['destination']
 
-        # --- Lógica de seguridad de zona ---
-        is_safe, info = check_safety(area)
-        if not is_safe:
-            better_area = find_better_area(area)
-            say(f"La zona {area} podría no ser segura: {info}. Buscaré hoteles en {better_area} en su lugar.")
-            area = better_area
+    # Verificar seguridad de la zona
+    is_safe, info = check_safety(area)
+    if not is_safe:
+        better_area = find_better_area(area)
+        area = better_area  # Buscar en la mejor zona alternativa
 
-        hotels = post_hotel_buttons(datos, state, event, client, doc_ref, max_lodging, area=area)
-        if hotels:
-            return True
-        else:
-            say(f"No encontré hoteles en presupuesto. ¿Quieres buscar en otra zona o aumentar presupuesto?")
-            return True
-    return False
+    hotels = search_hotels(area, max_lodging)
+    return hotels, area, is_safe
+
+# El archivo solo busca y entrega resultados a actions.py,
+# NO manda mensajes ni botones aquí, eso se hace en actions.py
