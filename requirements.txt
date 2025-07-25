@@ -9,3 +9,4 @@ google-cloud-firestore==2.16.*
 google-auth>=2.6.0         
 google-api-python-client>=2.0.0  
 dateparser==1.*
+pytest==8.*
