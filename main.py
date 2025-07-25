@@ -62,26 +62,3 @@ def handle_message_events(event, say, client):
 
     # 4. Resumen final, enviar a Finanzas
     handle_summary(datos, state, user_id, say, doc_ref, client)
-
-@app.event("app_home_opened")
-def handle_app_home_opened(event, client, context):
-    user_id = event["user"]
-    client.views_publish(
-        user_id=user_id,
-        view={
-            "type": "home",
-            "blocks": [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            "*¡Bienvenido a TravelBot!* :airplane:\n"
-                            "Aquí puedes gestionar tus solicitudes de viajes de negocio según la política de la empresa.\n"
-                            "Para empezar, escríbeme por este chat los detalles de tu próximo viaje o consulta los recursos en la barra lateral."
-                        ),
-                    },
-                }
-            ],
-        },
-    )
