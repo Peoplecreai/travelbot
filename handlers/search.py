@@ -1,101 +1,63 @@
-# handlers/search.py
+# actions.py
 
-import requests
-from config import LODGING_LIMITS, get_region, SERPAPI_KEY
+from slack_sdk.web import WebClient
 
-def search_google_flights(origin, destination, start_date, return_date):
-    url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google_flights",
-        "departure_id": origin,
-        "arrival_id": destination,
-        "outbound_date": start_date,
-        "return_date": return_date,
-        "api_key": SERPAPI_KEY
-    }
-    resp = requests.get(url, params=params)
-    if resp.status_code == 200:
-        data = resp.json()
-        if 'best_flights' in data and data['best_flights']:
-            return data['best_flights'][0]['flights']
-    return []
+# Presenta botones de vuelo al usuario
+def post_flight_buttons(datos, state, event, client: WebClient, doc_ref, flights=None):
+    # Si no recibe la lista de vuelos, la busca aquí (pero mejor pásala por parámetro)
+    if flights is None:
+        from handlers.search import get_flight_options
+        flights = get_flight_options(datos)
 
-def search_hotels(location, max_price):
-    url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google_hotels",
-        "q": f"hoteles en {location}",
-        "currency": "USD",
-        "api_key": SERPAPI_KEY,
-        "max_price_per_night": max_price
-    }
-    resp = requests.get(url, params=params)
-    if resp.status_code == 200:
-        data = resp.json()
-        if 'properties' in data:
-            return data['properties'][:3]
-    return []
+    if not flights:
+        return False
 
-def check_safety(area):
-    url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google",
-        "q": f"es segura la zona de {area}?",
-        "api_key": SERPAPI_KEY
-    }
-    resp = requests.get(url, params=params)
-    if resp.status_code == 200:
-        data = resp.json()
-        if 'organic_results' in data and data['organic_results']:
-            snippet = data['organic_results'][0].get('snippet', '')
-            if "segura" in snippet.lower() or "safe" in snippet.lower():
-                return True, snippet
-            else:
-                return False, snippet
-    return False, "No se pudo verificar."
-
-def find_better_area(area):
-    url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google",
-        "q": f"zonas seguras cerca de {area}",
-        "api_key": SERPAPI_KEY
-    }
-    resp = requests.get(url, params=params)
-    if resp.status_code == 200:
-        data = resp.json()
-        if 'organic_results' in data and data['organic_results']:
-            return data['organic_results'][0].get('title', area)
-    return area
-
-def get_flight_options(datos):
-    """
-    Regresa lista de vuelos disponibles (o vacía si no hay)
-    """
-    flights = search_google_flights(
-        datos['origin'],
-        datos['destination'],
-        datos['start_date'],
-        datos['return_date']
+    options = []
+    for idx, flight in enumerate(flights):
+        label = f"{flight.get('airline', '')} {flight.get('flight_number', '')} {flight.get('departure_time', '')} → {flight.get('arrival_time', '')} ${flight.get('price', 'N/A')}"
+        options.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": label[:75]},
+            "value": str(idx)
+        })
+    client.chat_postMessage(
+        channel=event['channel'],
+        text="Elige el vuelo que prefieres:",
+        blocks=[{
+            "type": "actions",
+            "block_id": "flight_select",
+            "elements": options
+        }]
     )
-    return flights
+    state['flight_options'] = flights
+    doc_ref.set(state)
+    return True
 
-def get_hotel_options(datos, state, max_lodging_override=None):
-    """
-    Regresa lista de hoteles (máx 3), área y si la zona es segura.
-    Aplica política de límite por seniority (state['level']) y región.
-    """
-    region = get_region(datos['destination'])
-    max_lodging = max_lodging_override or LODGING_LIMITS[state['level']][region]
-    area = datos.get('venue') or datos['destination']
+# Presenta botones de hotel al usuario
+def post_hotel_buttons(datos, state, event, client: WebClient, doc_ref, max_lodging, area, hotels=None):
+    if hotels is None:
+        from handlers.search import get_hotel_options
+        hotels, _, _ = get_hotel_options(datos, state, max_lodging_override=max_lodging)
+    if not hotels:
+        return False
 
-    # Verificar seguridad de la zona
-    is_safe, info = check_safety(area)
-    if not is_safe:
-        better_area = find_better_area(area)
-        area = better_area
-
-    hotels = search_hotels(area, max_lodging)
-    return hotels, area, is_safe
-
-# Solo funciones de búsqueda, NO slack, NO botones, NO UI
+    options = []
+    for idx, hotel in enumerate(hotels):
+        label = f"{hotel.get('name', '')} ({hotel.get('price', 'N/A')})"
+        options.append({
+            "type": "button",
+            "text": {"type": "plain_text", "text": label[:75]},
+            "value": str(idx)
+        })
+    client.chat_postMessage(
+        channel=event['channel'],
+        text=f"Elige el hotel que prefieres en {area}:",
+        blocks=[{
+            "type": "actions",
+            "block_id": "hotel_select",
+            "elements": options
+        }]
+    )
+    state['hotel_options'] = hotels
+    doc_ref.set(state)
+    return True
