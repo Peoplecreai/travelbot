@@ -1,0 +1,11 @@
+functions-framework==3.*
+slack-bolt==1.18.*
+slack-sdk==3.27.*         
+requests==2.*
+gspread==5.*
+oauth2client==4.*
+google-generativeai==0.3.*
+google-cloud-firestore==2.16.*
+google-auth>=2.6.0         
+google-api-python-client>=2.0.0  
+dateparser==1.*
