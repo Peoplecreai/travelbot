@@ -122,8 +122,10 @@ def register_actions(app):
         state = doc_ref.get().to_dict()
         state.setdefault('seen_flights', [])
         state['seen_flights'].extend([f['id'] for f in state.get('flight_options', [])])
-        flights = search_flights(state['data'], exclude_ids=state['seen_flights'])
-        if flights:
+        flights, err = search_flights(state['data'], exclude_ids=state['seen_flights'])
+        if err:
+            client.chat_postMessage(channel=body['channel']['id'], text=err)
+        elif flights:
             post_flight_buttons(flights, state, {'channel': body['channel']['id']}, client, doc_ref)
         else:
             client.chat_postMessage(channel=body['channel']['id'], text="No encontré más vuelos disponibles.")
@@ -139,8 +141,10 @@ def register_actions(app):
         region = get_region(state['data']['destination'])
         max_lodging = LODGING_LIMITS[state['level']][region]
         region_area = state['data'].get('venue') or state['data']['destination']
-        hotels = search_hotels(state['data'], region_area, max_lodging, exclude_ids=state['seen_hotels'])
-        if hotels:
+        hotels, err = search_hotels(state['data'], region_area, max_lodging, exclude_ids=state['seen_hotels'])
+        if err:
+            client.chat_postMessage(channel=body['channel']['id'], text=err)
+        elif hotels:
             post_hotel_buttons(hotels, state, {'channel': body['channel']['id']}, client, doc_ref, area=region_area)
         else:
             client.chat_postMessage(channel=body['channel']['id'], text="No encontré más hoteles disponibles.")
@@ -174,8 +178,10 @@ def register_actions(app):
         flight_query = body['view']['state']['values']['flight_text']['val']['value']
         doc_ref = db.collection('conversations').document(user_id)
         state = doc_ref.get().to_dict()
-        flights = search_flights(state['data'], query=flight_query)
-        if flights:
+        flights, err = search_flights(state['data'], query=flight_query)
+        if err:
+            client.chat_postMessage(channel=user_id, text=err)
+        elif flights:
             post_flight_buttons(flights, state, {'channel': user_id}, client, doc_ref)
         else:
             client.chat_postMessage(channel=user_id, text="No encontré disponibilidad para ese vuelo.")
@@ -212,8 +218,10 @@ def register_actions(app):
         region = get_region(state['data']['destination'])
         max_lodging = LODGING_LIMITS[state['level']][region]
         region_area = state['data'].get('venue') or state['data']['destination']
-        hotels = search_hotels(state['data'], region_area, max_lodging, query=hotel_query)
-        if hotels:
+        hotels, err = search_hotels(state['data'], region_area, max_lodging, query=hotel_query)
+        if err:
+            client.chat_postMessage(channel=user_id, text=err)
+        elif hotels:
             post_hotel_buttons(hotels, state, {'channel': user_id}, client, doc_ref, area=region_area)
         else:
             client.chat_postMessage(channel=user_id, text="No encontré disponibilidad para ese hotel.")
