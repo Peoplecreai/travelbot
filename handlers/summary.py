@@ -1,3 +1,7 @@
+import datetime
+from config import FINANCE_CHANNEL, db
+
+
 def handle_summary(datos, state, user_id, say, doc_ref, client):
     if not datos.get('frequent_flyer'):
         say("¿Tienes número de viajero frecuente o membresía de hotel? Si no, responde 'no'.")
@@ -18,8 +22,22 @@ def handle_summary(datos, state, user_id, say, doc_ref, client):
         f"- Hotel: {state.get('hotel_selected')}\n"
         f"- Viajero Frecuente: {datos.get('frequent_flyer','No')}\n"
     )
-    client.chat_postMessage(channel='#travel-requests', text=summary)
+    client.chat_postMessage(channel=FINANCE_CHANNEL, text=summary)
     say("¡Listo! Tu solicitud ha sido enviada a Finanzas para la compra.")
 
+    # Guardar ultimo destino en el perfil del usuario
+    profile_ref = db.collection("profiles").document(user_id)
+    profile_ref.set({"last_destination": datos["destination"]}, merge=True)
+
     # Reset state
-    doc_ref.set({'data': {}, 'step': 0, 'level': state['level'], 'last_ts': state['last_ts']})
+    doc_ref.set({
+        'data': {},
+        'step': 0,
+        'level': state['level'],
+        'request_type': 'travel',
+        'flight_options': [],
+        'hotel_options': [],
+        'seen_flights': [],
+        'seen_hotels': [],
+        'last_ts': state['last_ts'],
+    })
