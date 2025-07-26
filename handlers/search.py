@@ -1,7 +1,7 @@
 import re
 import requests
 import airportsdata
-from config import LODGING_LIMITS, get_region, SERPAPI_KEY
+from config import LODGING_LIMITS, get_region, SERPAPI_KEY, SERP_DEEP_SEARCH
 
 SERP_ENDPOINT = "https://serpapi.com/search.json"
 AIRPORTS = airportsdata.load("IATA")
@@ -22,9 +22,29 @@ def _ensure_iata(value: str):
         return val
     return _city_to_iata(val)
 
-def search_flights(datos, exclude_ids=None, query=None):
+def _parse_flight_entry(entry):
+    segments = entry.get("flights") or []
+    if not segments:
+        return None
+    first = segments[0]
+    last = segments[-1]
+    fid = entry.get("departure_token") or entry.get("booking_token")
+    fid = fid or f"{first.get('flight_number','')}_{first.get('departure_airport', {}).get('time','')}"
+    return {
+        "id": fid,
+        "airline": first.get("airline"),
+        "flight_number": first.get("flight_number"),
+        "departure_time": first.get("departure_airport", {}).get("time"),
+        "arrival_time": last.get("arrival_airport", {}).get("time"),
+        "price": entry.get("price"),
+    }
+
+
+def search_flights(datos, exclude_ids=None, query=None, deep_search=SERP_DEEP_SEARCH):
     """Search flights using SerpAPI Google Flights."""
     params = {"engine": "google_flights", "api_key": SERPAPI_KEY}
+    if deep_search:
+        params["deep_search"] = "true"
     if query:
         params["q"] = query
     else:
@@ -50,18 +70,14 @@ def search_flights(datos, exclude_ids=None, query=None):
         return [], "Error consultando SerpAPI."
 
     flights = []
-    for f in data.get("best_flights", []):
-        fid = f"{f.get('airline','')} {f.get('flight_number','')} {f.get('departing_at','')}"
-        if exclude_ids and fid in exclude_ids:
-            continue
-        flights.append({
-            "id": fid,
-            "airline": f.get("airline"),
-            "flight_number": f.get("flight_number"),
-            "departure_time": f.get("departing_at"),
-            "arrival_time": f.get("arriving_at"),
-            "price": f.get("price", {}).get("amount"),
-        })
+    for section in ["best_flights", "other_flights"]:
+        for entry in data.get(section, []):
+            flight = _parse_flight_entry(entry)
+            if not flight:
+                continue
+            if exclude_ids and flight["id"] in exclude_ids:
+                continue
+            flights.append(flight)
     if not flights:
         return [], "SerpAPI no devolvió vuelos."
     return flights, None
