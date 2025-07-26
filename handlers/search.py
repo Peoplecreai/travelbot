@@ -141,15 +141,9 @@ def check_safety(area):
     ]
     snippets = []
     for q in queries:
-        params = {"engine": "google", "q": q, "api_key": SERPAPI_KEY}
-        try:
-            resp = requests.get(SERP_ENDPOINT, params=params, timeout=20)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception:
-            continue
-        if data.get("organic_results"):
-            snippet = data["organic_results"][0].get("snippet", "")
+        results = search_web(q, num_results=1)
+        if results:
+            snippet = results[0].get("snippet", "")
             if snippet:
                 snippets.append(snippet)
     info = " ".join(snippets)
@@ -161,17 +155,9 @@ def check_safety(area):
     return False, info or "No se pudo verificar."
 
 def find_better_area(area):
-    url = "https://serpapi.com/search.json"
-    params = {
-        "engine": "google",
-        "q": f"zonas seguras cerca de {area}",
-        "api_key": SERPAPI_KEY
-    }
-    resp = requests.get(url, params=params)
-    if resp.status_code == 200:
-        data = resp.json()
-        if 'organic_results' in data and data['organic_results']:
-            return data['organic_results'][0].get('title', area)
+    results = search_web(f"zonas seguras cerca de {area}", num_results=1)
+    if results:
+        return results[0].get("title", area)
     return area
 
 def handle_search_and_buttons(datos, state, event, client, say, doc_ref, max_lodging_override=None):
