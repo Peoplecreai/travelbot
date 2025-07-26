@@ -50,7 +50,6 @@ def _ensure_iata(value: str):
     # Fallback to web search for uncommon names like CDMX
     return _search_iata_online(value)
 
-
 def search_web(query, num_results=5):
     """Return a list of organic search results from Google via SerpAPI."""
     params = {
