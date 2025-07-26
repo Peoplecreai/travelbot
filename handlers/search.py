@@ -83,6 +83,22 @@ def search_flights(datos, exclude_ids=None, query=None, deep_search=SERP_DEEP_SE
     return flights, None
 
 
+def _parse_hotel_entry(entry):
+    name = entry.get("name")
+    if not name:
+        return None
+    rate = entry.get("rate_per_night") or {}
+    price = rate.get("extracted_lowest") or rate.get("extracted_before_taxes_fees")
+    if not price:
+        price = entry.get("extracted_price")
+    return {
+        "id": name,
+        "name": name,
+        "price": price,
+        "link": entry.get("link"),
+    }
+
+
 def search_hotels(datos, area, max_price, exclude_ids=None, query=None):
     """Search hotels using SerpAPI Google Hotels."""
     params = {
@@ -91,10 +107,8 @@ def search_hotels(datos, area, max_price, exclude_ids=None, query=None):
         "check_in_date": datos["start_date"],
         "check_out_date": datos.get("return_date") or datos["start_date"],
     }
-    if query:
-        params["q"] = query
-    else:
-        params["q"] = area
+    params["q"] = query or area
+
     try:
         resp = requests.get(SERP_ENDPOINT, params=params, timeout=20)
         resp.raise_for_status()
@@ -106,18 +120,16 @@ def search_hotels(datos, area, max_price, exclude_ids=None, query=None):
         return [], "Error consultando SerpAPI."
 
     hotels = []
-    for h in data.get("hotels_results", []):
-        hid = h.get("name")
-        if exclude_ids and hid in exclude_ids:
-            continue
-        price = h.get("price_night", {}).get("extracted")
-        if price and price <= max_price:
-            hotels.append({
-                "id": hid,
-                "name": h.get("name"),
-                "price": price,
-                "link": h.get("link"),
-            })
+    for section in ["ads", "properties"]:
+        for h in data.get(section, []):
+            hotel = _parse_hotel_entry(h)
+            if not hotel:
+                continue
+            if exclude_ids and hotel["id"] in exclude_ids:
+                continue
+            if hotel.get("price") and hotel["price"] <= max_price:
+                hotels.append(hotel)
+
     if not hotels:
         return [], "SerpAPI no devolvió hoteles."
     return hotels, None
