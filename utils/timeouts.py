@@ -1,7 +1,12 @@
 import datetime
 
 def reset_state_if_timeout(state, timeout_seconds=1800):
-    """Resetea el estado si han pasado más de timeout_seconds desde last_ts."""
+    """Resetea el estado si han pasado más de ``timeout_seconds`` desde ``last_ts``.
+
+    Si ``last_ts`` no existe lo inicializa con la hora actual. Cuando se excede el
+    tiempo, reinicia los campos de datos y limpia ``flight_options`` y
+    ``hotel_options``.
+    """
     now_ts = int(datetime.datetime.utcnow().timestamp())
     last_ts = state.get('last_ts')
     if last_ts and now_ts - last_ts > timeout_seconds:
