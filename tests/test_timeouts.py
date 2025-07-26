@@ -52,5 +52,7 @@ def test_full_reset_when_timeout_exceeded(monkeypatch):
         "level": "L1",
         "flight_options": [],
         "hotel_options": [],
+        "seen_flights": [],
+        "seen_hotels": [],
         "last_ts": 2000,
     }

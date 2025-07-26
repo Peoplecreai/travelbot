@@ -1,3 +1,6 @@
+import datetime
+
+
 def handle_summary(datos, state, user_id, say, doc_ref, client):
     if not datos.get('frequent_flyer'):
         say("¿Tienes número de viajero frecuente o membresía de hotel? Si no, responde 'no'.")
@@ -22,4 +25,13 @@ def handle_summary(datos, state, user_id, say, doc_ref, client):
     say("¡Listo! Tu solicitud ha sido enviada a Finanzas para la compra.")
 
     # Reset state
-    doc_ref.set({'data': {}, 'step': 0, 'level': state['level'], 'last_ts': state['last_ts']})
+    doc_ref.set({
+        'data': {},
+        'step': 0,
+        'level': state['level'],
+        'flight_options': [],
+        'hotel_options': [],
+        'seen_flights': [],
+        'seen_hotels': [],
+        'last_ts': state['last_ts'],
+    })
