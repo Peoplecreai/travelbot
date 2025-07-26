@@ -6,6 +6,7 @@ from slack_bolt.adapter.google_cloud_functions import SlackRequestHandler
 from google.cloud import firestore
 
 from config import SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, db
+from users import load_user_levels
 from handlers.welcome import handle_welcome
 from handlers.actions import register_actions
 from handlers.router import determine_request_type, handle_request
@@ -15,6 +16,21 @@ from utils.timeouts import reset_state_if_timeout
 app = App(token=SLACK_BOT_TOKEN, signing_secret=SLACK_SIGNING_SECRET)
 register_actions(app)
 handler = SlackRequestHandler(app)
+
+
+def create_initial_state(user_id: str) -> dict:
+    """Return a new conversation state with the user's policy level."""
+    user_levels = load_user_levels()
+    level = user_levels.get(user_id, "General")
+    return {
+        "data": {},
+        "step": 0,
+        "level": level,
+        "flight_options": [],
+        "hotel_options": [],
+        "seen_flights": [],
+        "seen_hotels": [],
+    }
 
 # --- Punto de entrada para Google Cloud Functions ---
 @functions_framework.http
@@ -40,15 +56,13 @@ def handle_message_events(event, say, client):
     user_id = event["user"]
     text = event.get("text", "").strip().lower()
     doc_ref = db.collection("conversations").document(user_id)
-    state = doc_ref.get().to_dict() or {
-        "data": {},
-        "step": 0,
-        "level": None,
-        "flight_options": [],
-        "hotel_options": [],
-        "seen_flights": [],
-        "seen_hotels": [],
-    }
+    state = doc_ref.get().to_dict()
+    if not state:
+        state = create_initial_state(user_id)
+        doc_ref.set(state)
+    elif state.get("level") is None:
+        state["level"] = load_user_levels().get(user_id, "General")
+        doc_ref.set(state)
 
     # TIMEOUT: Si han pasado más de 30 min, reinicia estado
     state = reset_state_if_timeout(state)
