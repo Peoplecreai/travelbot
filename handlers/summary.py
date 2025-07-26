@@ -1,5 +1,7 @@
 import datetime
 
+from config import FINANCE_CHANNEL, db
+
 
 def handle_summary(datos, state, user_id, say, doc_ref, client):
     if not datos.get('frequent_flyer'):
