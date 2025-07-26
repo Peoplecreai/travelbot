@@ -5,12 +5,36 @@ from config import LODGING_LIMITS, get_region, SERPAPI_KEY, SERP_DEEP_SEARCH
 
 SERP_ENDPOINT = "https://serpapi.com/search.json"
 AIRPORTS = airportsdata.load("IATA")
+# Common aliases that don't directly map to a city name in airportsdata
+CITY_ALIASES = {
+    "CDMX": "MEX",
+    "CIUDAD DE MEXICO": "MEX",
+    "CIUDAD DE MÉXICO": "MEX",
+}
 
 
 def _city_to_iata(city: str):
+    alias = CITY_ALIASES.get(city.upper())
+    if alias:
+        return alias
     for info in AIRPORTS.values():
         if info.get("city") and info["city"].lower() == city.lower():
             return info["iata"]
+    return None
+
+
+def _search_iata_online(term: str):
+    """Attempt to find an IATA code via web search."""
+    queries = [f"codigo IATA {term}", f"IATA code {term}"]
+    for q in queries:
+        results = search_web(q, num_results=3)
+        for r in results:
+            text = f"{r.get('title','')} {r.get('snippet','')}"
+            m = re.search(r"\b([A-Z]{3})\b", text)
+            if m:
+                code = m.group(1)
+                if code in AIRPORTS:
+                    return code
     return None
 
 
@@ -20,7 +44,58 @@ def _ensure_iata(value: str):
     val = value.strip().upper()
     if re.fullmatch(r"[A-Z]{3}", val) and val in AIRPORTS:
         return val
-    return _city_to_iata(val)
+    code = _city_to_iata(val)
+    if code:
+        return code
+    # Fallback to web search for uncommon names like CDMX
+    return _search_iata_online(value)
+
+def search_web(query, num_results=5):
+    """Return a list of organic search results from Google via SerpAPI."""
+    params = {
+        "engine": "google",
+        "q": query,
+        "api_key": SERPAPI_KEY,
+        "num": num_results,
+    }
+    try:
+        resp = requests.get(SERP_ENDPOINT, params=params, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return []
+
+    results = []
+    for item in data.get("organic_results", [])[:num_results]:
+        results.append(
+            {
+                "title": item.get("title"),
+                "link": item.get("link"),
+                "snippet": item.get("snippet"),
+            }
+        )
+    return results
+
+
+def _extract_city(text: str):
+    """Return first city name in text that maps to a known airport."""
+    for match in re.findall(r"[A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z]+)*", text):
+        if _city_to_iata(match):
+            return match
+    return None
+
+
+def venue_city(venue: str):
+    """Try to resolve venue location to a city using web search."""
+    queries = [f"{venue} address", f"direccion de {venue}"]
+    for q in queries:
+        results = search_web(q, num_results=1)
+        if results:
+            text = f"{results[0].get('title','')} {results[0].get('snippet','')}"
+            city = _extract_city(text)
+            if city:
+                return city
+    return None
 
 def _parse_flight_entry(entry):
     segments = entry.get("flights") or []
@@ -183,7 +258,13 @@ def handle_search_and_buttons(datos, state, event, client, say, doc_ref, max_lod
     if not state.get('hotel_selected'):
         region = get_region(datos['destination'])
         max_lodging = max_lodging_override or LODGING_LIMITS[state['level']][region]
-        area = datos.get('venue') or datos['destination']
+        area = datos['destination']
+        query = None
+        if datos.get('venue'):
+            city = venue_city(datos['venue'])
+            if city:
+                area = city
+            query = datos['venue']
 
         # --- Lógica de seguridad de zona ---
         is_safe, info = check_safety(area)
@@ -192,7 +273,7 @@ def handle_search_and_buttons(datos, state, event, client, say, doc_ref, max_lod
             say(f"La zona {area} podría no ser segura: {info}. Buscaré hoteles en {better_area} en su lugar.")
             area = better_area
 
-        hotels, err = search_hotels(datos, area, max_lodging, exclude_ids=state['seen_hotels'])
+        hotels, err = search_hotels(datos, area, max_lodging, exclude_ids=state['seen_hotels'], query=query)
         if err:
             say(err)
             return True
