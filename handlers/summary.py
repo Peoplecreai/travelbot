@@ -1,3 +1,6 @@
+import datetime
+
+
 def handle_summary(datos, state, user_id, say, doc_ref, client):
     if not datos.get('frequent_flyer'):
         say("¿Tienes número de viajero frecuente o membresía de hotel? Si no, responde 'no'.")
