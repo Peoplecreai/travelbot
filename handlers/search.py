@@ -22,33 +22,6 @@ def _ensure_iata(value: str):
         return val
     return _city_to_iata(val)
 
-
-def search_web(query, num_results=5):
-    """Return a list of organic search results from Google via SerpAPI."""
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": SERPAPI_KEY,
-        "num": num_results,
-    }
-    try:
-        resp = requests.get(SERP_ENDPOINT, params=params, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception:
-        return []
-
-    results = []
-    for item in data.get("organic_results", [])[:num_results]:
-        results.append(
-            {
-                "title": item.get("title"),
-                "link": item.get("link"),
-                "snippet": item.get("snippet"),
-            }
-        )
-    return results
-
 def _parse_flight_entry(entry):
     segments = entry.get("flights") or []
     if not segments:
