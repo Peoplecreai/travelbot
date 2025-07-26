@@ -11,7 +11,6 @@ SERPAPI_KEY = os.environ.get("SERPAPI_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID")
 FINANCE_CHANNEL = os.environ.get("FINANCE_CHANNEL", "#travel-requests")
-SERP_DEEP_SEARCH = os.environ.get("SERP_DEEP_SEARCH", "false").lower() == "true"
 
 # --- Validaciones para debug ---
 assert SLACK_BOT_TOKEN, "Falta SLACK_BOT_TOKEN"
