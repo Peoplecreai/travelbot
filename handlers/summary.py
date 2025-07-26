@@ -1,5 +1,4 @@
 import datetime
-from config import FINANCE_CHANNEL, db
 
 
 def handle_summary(datos, state, user_id, say, doc_ref, client):
@@ -34,7 +33,6 @@ def handle_summary(datos, state, user_id, say, doc_ref, client):
         'data': {},
         'step': 0,
         'level': state['level'],
-        'request_type': 'travel',
         'flight_options': [],
         'hotel_options': [],
         'seen_flights': [],

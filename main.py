@@ -44,7 +44,6 @@ def handle_message_events(event, say, client):
         "data": {},
         "step": 0,
         "level": None,
-        "request_type": "travel",
         "flight_options": [],
         "hotel_options": [],
         "seen_flights": [],
