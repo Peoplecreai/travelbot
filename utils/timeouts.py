@@ -10,6 +10,7 @@ def reset_state_if_timeout(state, timeout_seconds=1800):
             'data': {},
             'step': 0,
             'level': state.get('level'),
+            'request_type': state.get('request_type', 'travel'),
             'flight_options': [],
             'hotel_options': [],
             'seen_flights': [],

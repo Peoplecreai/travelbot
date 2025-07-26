@@ -7,10 +7,8 @@ from google.cloud import firestore
 
 from config import SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, db
 from handlers.welcome import handle_welcome
-from handlers.extract import handle_extract_data
-from handlers.search import handle_search_and_buttons
 from handlers.actions import register_actions
-from handlers.summary import handle_summary
+from handlers.router import determine_request_type, handle_request
 from utils.timeouts import reset_state_if_timeout
 
 # Configuración de la app de Slack
@@ -46,6 +44,7 @@ def handle_message_events(event, say, client):
         "data": {},
         "step": 0,
         "level": None,
+        "request_type": "travel",
         "flight_options": [],
         "hotel_options": [],
         "seen_flights": [],
@@ -55,18 +54,12 @@ def handle_message_events(event, say, client):
     # TIMEOUT: Si han pasado más de 30 min, reinicia estado
     state = reset_state_if_timeout(state)
 
+    if not state.get("request_type"):
+        state["request_type"] = determine_request_type(text)
+        doc_ref.set(state)
+
     # 1. Bienvenida
     if handle_welcome(text, say, state, doc_ref):
         return
 
-    # 2. Extracción y petición de datos mínimos
-    datos = handle_extract_data(text, say, state, doc_ref, user_id)
-    if datos is None:
-        return
-
-    # 3. Búsqueda de vuelos/hoteles y manejo de botones
-    if handle_search_and_buttons(datos, state, event, client, say, doc_ref):
-        return
-
-    # 4. Resumen final, enviar a Finanzas
-    handle_summary(datos, state, user_id, say, doc_ref, client)
+    handle_request(event, say, client, state, doc_ref, user_id)

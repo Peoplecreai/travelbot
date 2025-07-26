@@ -1,4 +1,5 @@
 import datetime
+from config import FINANCE_CHANNEL
 
 
 def handle_summary(datos, state, user_id, say, doc_ref, client):
@@ -21,7 +22,7 @@ def handle_summary(datos, state, user_id, say, doc_ref, client):
         f"- Hotel: {state.get('hotel_selected')}\n"
         f"- Viajero Frecuente: {datos.get('frequent_flyer','No')}\n"
     )
-    client.chat_postMessage(channel='#travel-requests', text=summary)
+    client.chat_postMessage(channel=FINANCE_CHANNEL, text=summary)
     say("¡Listo! Tu solicitud ha sido enviada a Finanzas para la compra.")
 
     # Reset state
@@ -29,6 +30,7 @@ def handle_summary(datos, state, user_id, say, doc_ref, client):
         'data': {},
         'step': 0,
         'level': state['level'],
+        'request_type': 'travel',
         'flight_options': [],
         'hotel_options': [],
         'seen_flights': [],
