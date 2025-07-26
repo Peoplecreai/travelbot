@@ -80,6 +80,7 @@ def search_web(query, num_results=5):
             resp.raise_for_status()
             data = resp.json()
 
+
             results = []
 
             summary = data.get("result") or data.get("overview") or data.get("answer")
@@ -87,6 +88,10 @@ def search_web(query, num_results=5):
                 results.append({"title": "AI Overview", "link": None, "snippet": summary})
 
             for item in data.get("citations", [])[: max(num_results - len(results), 0)]:
+
+            results = []
+            for item in data.get("citations", [])[:num_results]:
+
                 results.append(
                     {
                         "title": item.get("title"),
@@ -95,8 +100,13 @@ def search_web(query, num_results=5):
                     }
                 )
 
+
             if results:
                 return results[:num_results]
+
+            if results:
+                return results
+
         except Exception:
             pass
 
