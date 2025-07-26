@@ -79,8 +79,14 @@ def search_web(query, num_results=5):
             resp = requests.get(SERP_ENDPOINT, params=params, timeout=20)
             resp.raise_for_status()
             data = resp.json()
+
             results = []
-            for item in data.get("citations", [])[:num_results]:
+
+            summary = data.get("result") or data.get("overview") or data.get("answer")
+            if summary:
+                results.append({"title": "AI Overview", "link": None, "snippet": summary})
+
+            for item in data.get("citations", [])[: max(num_results - len(results), 0)]:
                 results.append(
                     {
                         "title": item.get("title"),
@@ -88,8 +94,9 @@ def search_web(query, num_results=5):
                         "snippet": item.get("snippet"),
                     }
                 )
+
             if results:
-                return results
+                return results[:num_results]
         except Exception:
             pass
 
