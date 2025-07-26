@@ -51,7 +51,9 @@ def _ensure_iata(value: str):
     return _search_iata_online(value)
 
 def search_web(query, num_results=5):
-    """Return a list of organic search results from Google via SerpAPI."""
+    """Return a list of organic search results using SerpAPI Google AI Overview."""
+
+    # Paso 1: realizar una búsqueda normal para obtener el page_token
     params = {
         "engine": "google",
         "q": query,
@@ -62,7 +64,38 @@ def search_web(query, num_results=5):
         resp = requests.get(SERP_ENDPOINT, params=params, timeout=20)
         resp.raise_for_status()
         data = resp.json()
+        token = data.get("ai_overview", {}).get("page_token")
     except Exception:
+        token = None
+
+    # Paso 2: si tenemos token consultamos Google AI Overview
+    if token:
+        params = {
+            "engine": "google_ai_overview",
+            "api_key": SERPAPI_KEY,
+            "page_token": token,
+        }
+        try:
+            resp = requests.get(SERP_ENDPOINT, params=params, timeout=20)
+            resp.raise_for_status()
+            data = resp.json()
+            results = []
+            for item in data.get("citations", [])[:num_results]:
+                results.append(
+                    {
+                        "title": item.get("title"),
+                        "link": item.get("link"),
+                        "snippet": item.get("snippet"),
+                    }
+                )
+            if results:
+                return results
+        except Exception:
+            pass
+
+    # Fallback a resultados orgánicos básicos si falla AI Overview
+    if not token and "data" not in locals():
+        # Already failed to fetch initial data
         return []
 
     results = []
