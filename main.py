@@ -42,7 +42,15 @@ def handle_message_events(event, say, client):
     user_id = event["user"]
     text = event.get("text", "").strip().lower()
     doc_ref = db.collection("conversations").document(user_id)
-    state = doc_ref.get().to_dict() or {"data": {}, "step": 0, "level": None, "flight_options": [], "hotel_options": []}
+    state = doc_ref.get().to_dict() or {
+        "data": {},
+        "step": 0,
+        "level": None,
+        "flight_options": [],
+        "hotel_options": [],
+        "seen_flights": [],
+        "seen_hotels": [],
+    }
 
     # TIMEOUT: Si han pasado más de 30 min, reinicia estado
     state = reset_state_if_timeout(state)
